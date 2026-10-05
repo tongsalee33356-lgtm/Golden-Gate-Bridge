@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>AR Golden Gate Bridge - Natural Disaster Simulation</title>
+  
+  <!-- A-Frame Library -->
+  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+  <!-- AR.js for A-Frame -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* UI Overlay บนหน้าจอ */
+    #ui-container {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 999;
+      display: none; /* แสดงเฉพาะเมื่อพบ Hiro Marker */
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.85);
+      padding: 16px 20px;
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      color: white;
+      min-width: 300px;
+    }
+
+    .btn-group {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+
+    button {
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      outline: none;
+      color: white;
+      background: #334155;
+    }
+
+    button.active {
+      background: #2563eb;
+      box-shadow: 0 0 10px rgba(37, 99, 235, 0.5);
+    }
+
+    button:active {
+      transform: scale(0.96);
+    }
+
+    .status-text {
+      font-size: 13px;
+      color: #93c5fd;
+      font-weight: 500;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- UI ควบคุมภัยพิบัติ -->
+  <div id="ui-container">
+    <div class="status-text" id="status-label">สภาวะ: ปกติ (Clear Weather)</div>
+    <div class="btn-group">
+      <button id="btn-normal" class="active" onclick="setDisaster('normal')">สภาวะปกติ</button>
+      <button id="btn-storm" onclick="setDisaster('storm')">พายุฝน/ฟ้าผ่า</button>
+      <button id="btn-fog" onclick="setDisaster('fog')">หมอกหนาจัด</button>
+      <button id="btn-quake" onclick="setDisaster('quake')">แผ่นดินไหว</button>
+    </div>
+  </div>
+
+  <!-- A-Frame Scene -->
+  <a-scene 
+    embedded 
+    arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix;"
+    vr-mode-ui="enabled: false">
+
+    <!-- แสงไฟใน Scene -->
+    <a-light id="ambient-light" type="ambient" color="#ffffff" intensity="0.8"></a-light>
+    <a-light id="directional-light" type="directional" position="-1 4 2" intensity="0.6"></a-light>
+
+    <!-- ตรวจจับ Hiro Marker -->
+    <a-marker preset="hiro" id="hiro-marker">
+      
+      <!-- ผิวน้ำทะเล (Ocean Base) -->
+      <a-plane id="ocean" position="0 0 0" rotation="-90 0 0" width="3" height="2" color="#0284c7" material="opacity: 0.85; transparent: true"></a-plane>
+
+      <!-- โครงสร้างสะพาน Golden Gate (Bridge Structure Group) -->
+      <a-entity id="bridge-group" position="0 0 0">
+        
+        <!-- พื้นถนนสะพาน (Bridge Deck) -->
+        <a-box position="0 0.3 0" width="2.4" height="0.04" depth="0.25" color="#c2410c"></a-box>
+        
+        <!-- เสาเคเบิลหลักฝั่งซ้าย (Left Tower) -->
+        <a-box position="-0.7 0.8 0" width="0.08" height="1.0" depth="0.12" color="#ea580c"></a-box>
+        <a-box position="-0.7 1.3 0" width="0.06" height="0.1" depth="0.14" color="#ea580c"></a-box>
+        
+        <!-- เสาเคเบิลหลักฝั่งขวา (Right Tower) -->
+        <a-box position="0.7 0.8 0" width="0.08" height="1.0" depth="0.12" color="#ea580c"></a-box>
+        <a-box position="0.7 1.3 0" width="0.06" height="0.1" depth="0.14" color="#ea580c"></a-box>
+
+        <!-- สายเคเบิลแขวนหลัก (Main Suspension Cables) -->
+        <a-cylinder position="0 0.95 0.1" radius="0.01" height="2.4" rotation="0 0 90" color="#fdba74"></a-cylinder>
+        <a-cylinder position="0 0.95 -0.1" radius="0.01" height="2.4" rotation="0 0 90" color="#fdba74"></a-cylinder>
+
+      </a-entity>
+
+      <!-- เอฟเฟกต์หมอก/เมฆภัยพิบัติ (Fog/Cloud Visual) -->
+      <a-sphere id="fog-effect" position="0 0.6 0" radius="1.2" color="#94a3b8" material="transparent: true; opacity: 0" visible="false"></a-sphere>
+
+      <!-- แสงฟ้าผ่า (Lightning Effect) -->
+      <a-light id="lightning" type="point" color="#ffffff" intensity="0" position="0 2 0"></a-light>
+
+    </a-marker>
+
+    <!-- Camera -->
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    let currentDisaster = 'normal';
+    let quakeInterval = null;
+    let lightningInterval = null;
+
+    const bridgeGroup = document.getElementById('bridge-group');
+    const ocean = document.getElementById('ocean');
+    const ambientLight = document.getElementById('ambient-light');
+    const fogEffect = document.getElementById('fog-effect');
+    const lightning = document.getElementById('lightning');
+    const uiContainer = document.getElementById('ui-container');
+    const statusLabel = document.getElementById('status-label');
+    const marker = document.getElementById('hiro-marker');
+
+    // ตรวจจับ Marker
+    marker.addEventListener('markerFound', () => {
+      uiContainer.style.display = 'flex';
+    });
+
+    marker.addEventListener('markerLost', () => {
+      uiContainer.style.display = 'none';
+      clearEffects();
+    });
+
+    // ฟังก์ชันสลับสถานการณ์ภัยพิบัติ
+    function setDisaster(type) {
+      currentDisaster = type;
+      clearEffects();
+
+      // อัปเดตปุ่ม Active
+      document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(`btn-${type}`).classList.add('active');
+
+      if (type === 'normal') {
+        statusLabel.textContent = 'สภาวะ: ปกติ (Clear Weather)';
+        ambientLight.setAttribute('intensity', '0.8');
+        ambientLight.setAttribute('color', '#ffffff');
+        ocean.setAttribute('color', '#0284c7');
+      } 
+      else if (type === 'storm') {
+        statusLabel.textContent = 'สภาวะ: พายุฝนฟ้าคะนอง (Thunderstorm)';
+        ambientLight.setAttribute('intensity', '0.2'); // ท้องฟ้ามืดลง
+        ambientLight.setAttribute('color', '#1e293b');
+        ocean.setAttribute('color', '#0f172a'); // น้ำทะเลมืดเข้ม
+
+        // จำลองฟ้าผ่าเป็นระยะ
+        lightningInterval = setInterval(() => {
+          if (Math.random() > 0.6) {
+            lightning.setAttribute('intensity', '5');
+            setTimeout(() => lightning.setAttribute('intensity', '0'), 100);
+          }
+        }, 800);
+      } 
+      else if (type === 'fog') {
+        statusLabel.textContent = 'สภาวะ: หมอกหนาจัด (Dense Sea Fog)';
+        ambientLight.setAttribute('intensity', '0.4');
+        ambientLight.setAttribute('color', '#cbd5e1');
+        fogEffect.setAttribute('visible', 'true');
+        
+        // เพิ่ม Animation หมอกปกคลุม
+        fogEffect.setAttribute('animation', {
+          property: 'material.opacity',
+          to: '0.75',
+          dur: 2000,
+          easing: 'linear'
+        });
+      } 
+      else if (type === 'quake') {
+        statusLabel.textContent = 'สภาวะ: แผ่นดินไหว (Earthquake Simulation)';
+        ambientLight.setAttribute('intensity', '0.7');
+        
+        // จำลองการสั่นสะเทือนของโครงสร้างสะพาน
+        let time = 0;
+        quakeInterval = setInterval(() => {
+          time += 0.2;
+          const shakeX = Math.sin(time * 10) * 0.03;
+          const shakeZ = Math.cos(time * 12) * 0.02;
+          bridgeGroup.setAttribute('position', `${shakeX} 0 ${shakeZ}`);
+        }, 50);
+      }
+    }
+
+    // ล้าง Effect และ Animation เดิม
+    function clearEffects() {
+      if (quakeInterval) clearInterval(quakeInterval);
+      if (lightningInterval) clearInterval(lightningInterval);
+      
+      bridgeGroup.setAttribute('position', '0 0 0');
+      fogEffect.removeAttribute('animation');
+      fogEffect.setAttribute('material.opacity', '0');
+      fogEffect.setAttribute('visible', 'false');
+      lightning.setAttribute('intensity', '0');
+    }
+  </script>
+</body>
+</html>
